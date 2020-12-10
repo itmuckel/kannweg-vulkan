@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -16,6 +17,8 @@ const bool enableValidationLayers = false;
 #else
 const bool enableValidationLayers = true;
 #endif
+
+VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 
 class HelloTriangleApplication
 {
@@ -44,6 +47,7 @@ class HelloTriangleApplication
     void initVulkan()
     {
         createInstance();
+        pickPhysicalDevice();
     }
 
     void createInstance()
@@ -65,7 +69,7 @@ class HelloTriangleApplication
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.pApplicationInfo = &appInfo;
 
-        uint32_t glfwExtensionCount = 0;
+        uint32_t glfwExtensionCount{};
         const char **glfwExtensions;
 
         glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -88,7 +92,7 @@ class HelloTriangleApplication
             throw std::runtime_error("failed to create instance!");
         }
 
-        uint32_t extensionCount = 0;
+        uint32_t extensionCount{};
         vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
 
         std::vector<VkExtensionProperties> extensions{extensionCount};
@@ -138,6 +142,77 @@ class HelloTriangleApplication
         }
 
         return true;
+    }
+
+    void pickPhysicalDevice()
+    {
+        uint32_t deviceCount{};
+        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+        if (deviceCount == 0)
+        {
+            throw std::runtime_error("failed to find GPUs with Vulkan support!");
+        }
+
+        std::vector<VkPhysicalDevice> devices{deviceCount};
+        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+        for (const auto &device : devices)
+        {
+            if (isDeviceSuitable(device))
+            {
+                physicalDevice = device;
+                break;
+            }
+        }
+
+        if (physicalDevice == VK_NULL_HANDLE)
+        {
+            throw std::runtime_error("failed to find a suitable GPU!");
+        }
+    }
+
+    bool isDeviceSuitable(VkPhysicalDevice device)
+    {
+        QueueFamilyIndices indices = findQueueFamilies(device);
+
+        return indices.isComplete();
+    }
+
+    struct QueueFamilyIndices
+    {
+        std::optional<int32_t> graphicsFamily;
+
+        bool isComplete()
+        {
+            return graphicsFamily.has_value();
+        }
+    };
+
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device)
+    {
+        QueueFamilyIndices indices{};
+
+        uint32_t queueFamilyCount{};
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+        std::vector<VkQueueFamilyProperties> queueFamilies{queueFamilyCount};
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+        for (int i = 0; i < queueFamilyCount; i++)
+        {
+            if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+            {
+                indices.graphicsFamily = i;
+            }
+
+            if (indices.isComplete())
+            {
+                break;
+            }
+        }
+
+        return indices;
     }
 
     void mainLoop()
