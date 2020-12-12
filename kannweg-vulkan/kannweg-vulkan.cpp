@@ -16,8 +16,8 @@ constexpr bool enableValidationLayers = false;
 constexpr bool enableValidationLayers = true;
 #endif
 
-constexpr uint32_t WIDTH = 800;
-constexpr uint32_t HEIGHT = 600;
+constexpr uint32_t WIDTH = 1280;
+constexpr uint32_t HEIGHT = 1024;
 
 const std::vector<const char *> validationLayers{{"VK_LAYER_KHRONOS_validation"}};
 const std::vector<const char *> deviceExtensions{{VK_KHR_SWAPCHAIN_EXTENSION_NAME}};
@@ -58,20 +58,28 @@ class HelloTriangleApplication
     VkInstance instance{};
     VkPhysicalDevice physicalDevice{};
     VkDevice device{};
+
     VkQueue graphicsQueue{};
     VkQueue presentQueue{};
+
     VkSurfaceKHR surface{};
     VkSwapchainKHR swapChain{};
     std::vector<VkImage> swapChainImages{};
     VkFormat swapChainImageFormat{};
     VkExtent2D swapChainExtent{};
     std::vector<VkImageView> swapChainImageViews{};
+
     VkRenderPass renderPass{};
     VkPipelineLayout pipelineLayout{};
     VkPipeline graphicsPipeline{};
+
     std::vector<VkFramebuffer> swapChainFramebuffers{};
+
     VkCommandPool commandPool{};
     std::vector<VkCommandBuffer> commandBuffers{};
+
+    VkSemaphore imageAvailableSemaphore{};
+    VkSemaphore renderFinishedSemaphore{};
 
     void initWindow()
     {
@@ -95,6 +103,7 @@ class HelloTriangleApplication
         createFramebuffers();
         createCommandPool();
         createCommandBuffers();
+        createSemaphores();
     }
 
     void createInstance()
@@ -553,12 +562,22 @@ class HelloTriangleApplication
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &colorAttachmentRef;
 
+        VkSubpassDependency dependency{};
+        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass = 0;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask = 0;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
         VkRenderPassCreateInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         renderPassInfo.attachmentCount = 1;
         renderPassInfo.pAttachments = &colorAttachment;
         renderPassInfo.subpassCount = 1;
         renderPassInfo.pSubpasses = &subpass;
+        renderPassInfo.dependencyCount = 1;
+        renderPassInfo.pDependencies = &dependency;
 
         if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
         {
@@ -787,16 +806,70 @@ class HelloTriangleApplication
         }
     }
 
+    void createSemaphores()
+    {
+        VkSemaphoreCreateInfo semaphoreInfo{};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
+            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS)
+        {
+
+            throw std::runtime_error("failed to create semaphores!");
+        }
+    }
+
+    void drawFrame()
+    {
+        uint32_t imageIndex{};
+        vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphore, nullptr, &imageIndex);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+        const VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
+        const VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.pWaitDstStageMask = waitStages;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+        const VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, nullptr) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to submit draw command buffer!");
+        }
+
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = signalSemaphores;
+        VkSwapchainKHR swapChains[] = {swapChain};
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+        presentInfo.pImageIndices = &imageIndex;
+
+        vkQueuePresentKHR(presentQueue, &presentInfo);
+    }
+
     void mainLoop()
     {
         while (!glfwWindowShouldClose(window))
         {
             glfwPollEvents();
+            drawFrame();
         }
+
+        vkDeviceWaitIdle(device);
     }
 
     void cleanup()
     {
+        vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
+        vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
         vkDestroyCommandPool(device, commandPool, nullptr);
         for (auto framebuffer : swapChainFramebuffers)
         {

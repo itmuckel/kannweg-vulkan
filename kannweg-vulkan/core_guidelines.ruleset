@@ -19,4 +19,8 @@
   <Include Path="cppcorecheckstylerules.ruleset" Action="Default" />
   <Include Path="cppcorechecktyperules.ruleset" Action="Default" />
   <Include Path="cppcorecheckuniquepointerrules.ruleset" Action="Default" />
+  <Rules AnalyzerId="Microsoft.Analyzers.NativeCodeAnalysis" RuleNamespace="Microsoft.Rules.Native">
+    <Rule Id="C26446" Action="None" />
+    <Rule Id="C26485" Action="None" />
+  </Rules>
 </RuleSet>
